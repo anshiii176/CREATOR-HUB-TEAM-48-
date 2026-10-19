@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Your Care — Employee Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Find Your<span class="plus"> Care+</span></div>
+    <div>
+      <span class="user-pill">🩺 {{ username }}</span>
+      <a class="logout-link" href="/logout">Log out</a>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="card">
+      <h1>Your Assigned Shifts</h1>
+      <p class="subtitle">Non-medical support tasks for each active booking. Check items off as you complete them.</p>
+
+      <div id="bookings-container">
+        <p class="small-muted">Loading assigned bookings…</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Fixed, non-medical checklist template applied to every active booking.
+    // In a production build this could vary by patient/booking, but for the
+    // hackathon MVP a consistent checklist demonstrates the intended scope
+    // of work (companionship/meals/medicine reminders — never clinical care).
+    const TASK_TEMPLATE = [
+      'Check in with floor nurse on arrival',
+      'Administer Afternoon Oral Medicine (as directed by nurse)',
+      'Help with Fresh Fruits / Meals',
+      'Assist with mobility around the ward (short walks)',
+      'Provide companionship & conversation',
+      'Inform floor nurse of empty IV line',
+      'Log any patient requests for the family',
+    ];
+
+    const container = document.getElementById('bookings-container');
+
+    async function loadBookings() {
+      try {
+        const res = await fetch('/api/employee/bookings');
+        const data = await res.json();
+
+        if (!data.success) {
+          container.innerHTML = `<p class="small-muted">Unable to load bookings. Please log in again.</p>`;
+          return;
+        }
+
+        renderBookings(data.bookings || []);
+      } catch (err) {
+        container.innerHTML = `<p class="small-muted">Something went wrong loading your shifts.</p>`;
+        console.error(err);
+      }
+    }
+
+    function renderBookings(bookings) {
+      if (bookings.length === 0) {
+        container.innerHTML = `<div class="empty-state">You have no assigned bookings right now. New shifts will appear here automatically.</div>`;
+        return;
+      }
+
+      container.innerHTML = '';
+
+      bookings.forEach((b) => {
+        const block = document.createElement('div');
+        block.className = 'booking-block';
+
+        const statusClass = b.status === 'Completed' ? 'completed' : 'confirmed';
+
+        const tasksHtml = TASK_TEMPLATE.map((task, i) => `
+          <li>
+            <input type="checkbox" id="task-${b.id}-${i}" ${b.status === 'Completed' ? 'checked disabled' : ''}>
+            <label for="task-${b.id}-${i}">${task}</label>
+          </li>
+        `).join('');
+
+        block.innerHTML = `
+          <div class="header-row">
+            <div>
+              <h3 style="margin-bottom:2px;">${b.hospital_name}</h3>
+              <div class="small-muted">📍 ${b.ward_bed} &nbsp;·&nbsp; ⏱️ ${b.hours} hour shift</div>
+            </div>
+            <span class="status-pill ${statusClass}">${b.status}</span>
+          </div>
+
+          <ul class="task-list">${tasksHtml}</ul>
+
+          ${b.status !== 'Completed' ? `
+            <button class="btn btn-secondary section-spacer complete-btn" data-id="${b.id}">
+              ✅ Mark Shift Completed
+            </button>` : ''
+          }
+        `;
+
+        container.appendChild(block);
+      });
+
+      document.querySelectorAll('.complete-btn').forEach((btn) => {
+        btn.addEventListener('click', () => completeBooking(btn.dataset.id));
+      });
+    }
+
+    async function completeBooking(bookingId) {
+      try {
+        const res = await fetch(`/api/employee/complete/${bookingId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          loadBookings(); // refresh the list to reflect the new status
+        } else {
+          alert(data.error || 'Could not update this booking.');
+        }
+      } catch (err) {
+        alert('Something went wrong. Please try again.');
+        console.error(err);
+      }
+    }
+
+    loadBookings();
+  </script>
+</body>
+</html>

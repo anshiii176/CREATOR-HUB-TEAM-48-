@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Your Care — Live Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Find Your<span class="plus"> Care+</span></div>
+    <div>
+      <a class="logout-link" href="/dashboard">← Back to Search</a>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="card">
+      <h1>Live Care Tracker</h1>
+      <p class="subtitle" id="booking-subtitle">Loading booking details…</p>
+
+      <div class="status-banner" id="booking-status-banner">
+        🗓️ Booking schedule and payment details are loading…
+      </div>
+      <div class="payment-summary" id="payment-summary" aria-live="polite"></div>
+
+      <h3>Live Activity Feed</h3>
+      <ul id="feed" class="feed"></ul>
+
+      <button id="emergency-btn" class="emergency-btn">
+        ⚠️ ESCALATE EMERGENCY TO WARD DESK
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const bookingId = {{ booking_id }};
+    const feedEl = document.getElementById('feed');
+    const subtitleEl = document.getElementById('booking-subtitle');
+
+    // Simulated live updates a real attendant/geofence integration would push.
+    // Each entry is added to the feed on its own timer tick, newest on top.
+    const SIMULATED_EVENTS = [
+      'Attendant checked into ward via geofence',
+      'Vitals check-in completed with floor nurse',
+      'Assisted patient with fresh coconut water',
+      'Administered afternoon oral medicine (nurse-directed)',
+      'Short walk around the ward with patient',
+      'Companionship & conversation session',
+      'Reported empty IV line to floor nurse',
+      'Evening meal assistance completed',
+    ];
+
+    let eventIndex = 0;
+
+    function currentTimeLabel() {
+      const now = new Date();
+      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function pushFeedEntry(text) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="time">${currentTimeLabel()}</span><span>${text}</span>`;
+      feedEl.prepend(li); // newest entry at the top
+    }
+
+    async function loadBookingDetails() {
+      try {
+        const res = await fetch(`/api/tracker/${bookingId}`);
+        const data = await res.json();
+
+        if (!data.success) {
+          subtitleEl.textContent = 'Booking not found.';
+          return;
+        }
+
+        const b = data.booking;
+        const start = b.scheduled_start ? new Date(b.scheduled_start) : new Date(b.created_at);
+        const finish = new Date(start.getTime() + Number(b.hours) * 60 * 60 * 1000);
+        const fmt = (d) => d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+        subtitleEl.textContent = `${b.caretaker_name} (${b.avatar}) · ${b.hospital_name} — ${b.ward_bed}`;
+        document.getElementById('booking-status-banner').textContent = `🗓️ Scheduled: ${fmt(start)} – ${fmt(finish)} · ${b.hours} hour(s)`;
+        document.getElementById('payment-summary').innerHTML = `<strong>Estimated total: ₹${b.amount}</strong><br>Payment: ${b.payment_method} · <span>${b.payment_status}</span><p class="small-muted">Online payments are demo-only in this version. No money has been charged.</p>`;
+        pushFeedEntry(`Booking confirmed for ${b.caretaker_name}`);
+      } catch (err) {
+        subtitleEl.textContent = 'Unable to load booking details.';
+        console.error(err);
+      }
+    }
+
+    // Keep demo activity clearly labelled and only begin it near the scheduled start.
+    function startLiveFeedSimulation() {
+      setInterval(async () => {
+        if (eventIndex < SIMULATED_EVENTS.length) {
+          try {
+            const res = await fetch(`/api/tracker/${bookingId}`);
+            const data = await res.json();
+            if (data.success && data.booking.scheduled_start) {
+              const start = new Date(data.booking.scheduled_start);
+              if (new Date() < start) return;
+            }
+          } catch (_) { /* keep the demo feed resilient */ }
+          pushFeedEntry(`Demo activity: ${SIMULATED_EVENTS[eventIndex]}`);
+          eventIndex += 1;
+        }
+      }, 15000); // calmer, less frequent updates; real integrations should provide actual events
+    }
+
+    // Emergency escalation button: fires a prominent browser notification
+    // (falling back to an alert if Notification permission isn't available)
+    // and logs the escalation into the live feed.
+    document.getElementById('emergency-btn').addEventListener('click', () => {
+      pushFeedEntry('⚠️ EMERGENCY ESCALATED TO WARD DESK');
+
+      const showAlertFallback = () => {
+        alert('⚠️ Emergency escalated to the ward desk. A nurse has been notified.');
+      };
+
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification('🚨 Emergency Escalated', {
+            body: 'Ward desk has been alerted for immediate attention.',
+          });
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+              new Notification('🚨 Emergency Escalated', {
+                body: 'Ward desk has been alerted for immediate attention.',
+              });
+            } else {
+              showAlertFallback();
+            }
+          });
+        } else {
+          showAlertFallback();
+        }
+      } else {
+        showAlertFallback();
+      }
+    });
+
+    loadBookingDetails();
+    startLiveFeedSimulation();
+  </script>
+</body>
+</html>

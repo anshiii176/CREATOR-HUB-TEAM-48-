@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Your Care — Book a Caretaker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Find Your<span class="plus"> Care+</span></div>
+    <div>
+      <span class="user-pill">👋 {{ username }}</span>
+      <a class="logout-link" href="/logout">Log out</a>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="card">
+      <h1>Book a Verified Caretaker</h1>
+      <p class="subtitle">Tell us where your loved one is, and we'll match you with an available attendant.</p>
+
+      <form id="search-form">
+        <div class="form-grid">
+          <div class="field full">
+            <label for="hospital_name">Hospital Name</label>
+            <input type="text" id="hospital_name" name="hospital_name" placeholder="e.g. City General Hospital" required>
+          </div>
+
+          <div class="field full">
+            <label for="ward_bed">Ward &amp; Bed Number</label>
+            <input type="text" id="ward_bed" name="ward_bed" placeholder="e.g. Ward 4B, Bed 12" required>
+          </div>
+
+          <div class="field">
+            <label for="scheduled_start">Care starts (date &amp; time)</label>
+            <input type="datetime-local" id="scheduled_start" name="scheduled_start" required>
+          </div>
+          <div class="field">
+            <label for="hours">Duration (hours)</label>
+            <input type="number" id="hours" name="hours" min="1" max="24" value="4" required>
+          </div>
+          <div class="field full">
+            <label for="payment_method">Payment method</label>
+            <select id="payment_method" name="payment_method" required>
+              <option value="UPI (demo)">UPI (demo checkout)</option>
+              <option value="Card (demo)">Debit / Credit Card (demo checkout)</option>
+              <option value="Cash on arrival">Cash on arrival</option>
+            </select>
+            <p class="small-muted">Rate: ₹250/hour · Online choices are demo-only and will not charge you.</p>
+          </div>
+
+          <div class="field">
+            <label for="gender">Preferred Gender</label>
+            <select id="gender" name="gender">
+              <option value="Any">Any</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+
+          <div class="field full">
+            <label for="age_group">Preferred Age Group</label>
+            <select id="age_group" name="age_group">
+              <option value="Any">Any</option>
+              <option value="Young">Young (20–40)</option>
+              <option value="Senior">Senior (40+)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+          🔍 Find Available Caretakers
+        </button>
+      </form>
+
+      <div id="results-section" style="display: none;">
+        <h2>Available Caretakers</h2>
+        <div id="results-count" class="small-muted"></div>
+        <div id="caretaker-grid" class="caretaker-grid"></div>
+      </div>
+
+      <div id="empty-section" class="empty-state" style="display: none;">
+        No caretakers match those filters right now. Try widening your search.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const searchForm = document.getElementById('search-form');
+    const resultsSection = document.getElementById('results-section');
+    const emptySection = document.getElementById('empty-section');
+    const caretakerGrid = document.getElementById('caretaker-grid');
+    const resultsCount = document.getElementById('results-count');
+
+    // Stash the current intake details (hospital/ward/hours) so we can
+    // reuse them once the user picks a caretaker card and confirms.
+    let currentIntake = null;
+    const startInput = document.getElementById('scheduled_start');
+    function setMinimumStartTime() {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      startInput.min = now.toISOString().slice(0, 16);
+      if (!startInput.value) startInput.value = startInput.min;
+    }
+    setMinimumStartTime();
+
+    searchForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      currentIntake = {
+        hospital_name: document.getElementById('hospital_name').value.trim(),
+        ward_bed: document.getElementById('ward_bed').value.trim(),
+        hours: document.getElementById('hours').value,
+        scheduled_start: document.getElementById('scheduled_start').value,
+      };
+      if (!currentIntake.scheduled_start || new Date(currentIntake.scheduled_start) <= new Date()) {
+        alert('Please select a future start date and time.');
+        return;
+      }
+
+      const payload = {
+        gender: document.getElementById('gender').value,
+        age_group: document.getElementById('age_group').value,
+        scheduled_start: currentIntake.scheduled_start,
+        hours: currentIntake.hours,
+      };
+
+      const submitBtn = searchForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Searching…';
+
+      try {
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (!data.success) { alert(data.error || 'Unable to search this time slot.'); return; }
+        renderResults(data.caretakers || []);
+      } catch (err) {
+        alert('Something went wrong while searching. Please try again.');
+        console.error(err);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🔍 Find Available Caretakers';
+      }
+    });
+
+    function renderResults(caretakers) {
+      caretakerGrid.innerHTML = '';
+
+      if (caretakers.length === 0) {
+        resultsSection.style.display = 'none';
+        emptySection.style.display = 'block';
+        return;
+      }
+
+      emptySection.style.display = 'none';
+      resultsSection.style.display = 'block';
+      resultsCount.textContent = `${caretakers.length} caretaker(s) found`;
+
+      caretakers.forEach((c) => {
+        const card = document.createElement('div');
+        card.className = 'caretaker-card';
+        card.innerHTML = `
+          <div class="caretaker-avatar">${c.avatar}</div>
+          <h3>${c.name}</h3>
+          <div class="caretaker-meta">${c.gender}, ${c.age} yrs</div>
+          <div>
+            <span class="badge badge-verified">Verified ✔️</span>
+            <span class="badge badge-rating">⭐ ${c.rating}</span>
+          </div>
+          <p class="small-muted">${new Date(currentIntake.scheduled_start).toLocaleString()} · ${currentIntake.hours} hour(s)</p>
+          <p class="price-line">Estimated total: <strong>₹${Number(currentIntake.hours) * 250}</strong></p>
+          <button class="btn btn-primary confirm-btn" data-id="${c.id}">Book &amp; Continue</button>
+        `;
+        caretakerGrid.appendChild(card);
+      });
+
+      // Wire up each "Confirm Booking" button after the cards are in the DOM
+      document.querySelectorAll('.confirm-btn').forEach((btn) => {
+        btn.addEventListener('click', () => confirmBooking(btn.dataset.id, btn));
+      });
+    }
+
+    async function confirmBooking(caretakerId, btnEl) {
+      if (!currentIntake) return;
+
+      btnEl.disabled = true;
+      btnEl.textContent = 'Booking…';
+
+      try {
+        const res = await fetch('/api/book', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hospital_name: currentIntake.hospital_name,
+            ward_bed: currentIntake.ward_bed,
+            hours: currentIntake.hours,
+            scheduled_start: currentIntake.scheduled_start,
+            payment_method: document.getElementById('payment_method').value,
+            caretaker_id: caretakerId,
+          }),
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          alert(data.error || 'Booking failed. Please try another caretaker.');
+          btnEl.disabled = false;
+          btnEl.textContent = 'Confirm Booking';
+          return;
+        }
+
+        // Route to the Live Care Tracker for this new booking
+        window.location.href = `/tracker/${data.booking_id}`;
+      } catch (err) {
+        alert('Something went wrong while booking. Please try again.');
+        console.error(err);
+        btnEl.disabled = false;
+        btnEl.textContent = 'Confirm Booking';
+      }
+    }
+  </script>
+</body>
+</html>

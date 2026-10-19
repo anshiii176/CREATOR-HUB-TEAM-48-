@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Your Care — Log In</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <div class="logo">Find Your<span class="plus"> Care+</span></div>
+      <p class="tagline">Verified, non-medical hospital care — on call, by the hour.</p>
+
+      <form id="login-form" action="/login" method="POST">
+        <!-- Role toggle: Hirer (family member) vs Employee (caretaker) -->
+        <div class="role-toggle">
+          <input type="radio" id="role-hirer" name="role" value="hirer" checked>
+          <label for="role-hirer">👨‍👩‍👧 Hirer (Family)</label>
+
+          <input type="radio" id="role-employee" name="role" value="employee">
+          <label for="role-employee">🩺 Employee (Caretaker)</label>
+        </div>
+
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="e.g. jane.doe" required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">Log In as Hirer</button>
+      </form>
+
+      <p class="hint-text">Hackathon demo — any username/password will work.</p>
+    </div>
+  </div>
+
+  <script>
+    // Purely cosmetic: update the submit button label to match the selected role,
+    // so the user gets clear feedback about which dashboard they'll land on.
+    const radios = document.querySelectorAll('input[name="role"]');
+    const submitBtn = document.getElementById('submit-btn');
+
+    function updateButtonLabel() {
+      const selected = document.querySelector('input[name="role"]:checked').value;
+      submitBtn.textContent = selected === 'hirer'
+        ? 'Log In as Hirer'
+        : 'Log In as Employee';
+    }
+
+    radios.forEach(r => r.addEventListener('change', updateButtonLabel));
+    updateButtonLabel();
+  </script>
+</body>
+</html>
